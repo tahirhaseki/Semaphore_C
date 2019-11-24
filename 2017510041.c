@@ -6,8 +6,8 @@
 #include <time.h>
 
 #define ROOM_CAPACITY 4
-#define ROOM_NUMBER 2
-#define STUDENT_NUMBER 8
+#define ROOM_NUMBER 10
+#define STUDENT_NUMBER 100
 
 enum roomStatus{
     entryFree,
@@ -24,10 +24,27 @@ struct studyRoom{
     sem_t lockRoom;             // studyRoom locks the room when it's full.
     sem_t studyRoomChairs;      // studyRoomChairs limits the number of students allowed in the room at the same time.
     sem_t usingBroom;           // usingBroom shows the roomKeeper is cleaning or not.
+    sem_t closeRoom;            // Send keeper to closing info.
     int status;                 // declares status of room.
     int studentInRoom;          // keeps number of students in the room;
     int completed;
 } typedef studyRoom;
+
+int msleep(long msec){
+    struct timespec ts;
+    int res;
+
+    if(msec < 0){
+        return -1;
+    }
+
+    ts.tv_sec = msec / 1000;
+    ts.tv_nsec = (msec % 1000) * 1000000;
+    do {
+        res = nanosleep(&ts,&ts);
+    } while (res);
+    return res;
+}
 
 sem_t screen;
 studyRoom studyRooms[ROOM_NUMBER];
@@ -49,6 +66,7 @@ int main(int argc, char *argv[]){
         sem_init(&(studyRooms[i].lockRoom),0,1);
         sem_init(&(studyRooms[i].studyRoomChairs),0,ROOM_CAPACITY);
         sem_init(&(studyRooms[i].usingBroom),0,0);
+        sem_init(&(studyRooms[i].closeRoom),0,0);
         studyRooms[i].status = entryFree;
         studyRooms[i].studentInRoom = 0;
         studyRooms[i].completed = 0;
@@ -64,7 +82,7 @@ int main(int argc, char *argv[]){
     }
 
     pthread_create(&console_tid,NULL,console,NULL);
-    sleep(1);
+    msleep(500);
     // Creating roomKeepers
     for (int i = 0; i < ROOM_NUMBER; i++)
     {
@@ -73,7 +91,7 @@ int main(int argc, char *argv[]){
     for (int i = 0; i < STUDENT_NUMBER; i++)
     {
         pthread_create(&std_tid[i],NULL,student,(void *)(std_numbers+i));
-        sleep(1);
+        msleep(50);
     }
     for (int i = 0;i < STUDENT_NUMBER ;i++)
     {
@@ -89,8 +107,14 @@ int main(int argc, char *argv[]){
 
 int anyFreeStudyRoom(){
     for(int i = 0;i < ROOM_NUMBER;i++){
-        if(studyRooms[i].status != full &&sem_trywait(&studyRooms[i].studyRoomChairs)== 0)
+        if(studyRooms[i].status == idle && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
             return i;
+        }
+    }
+    for(int i = 0;i < ROOM_NUMBER;i++){
+        if(studyRooms[i].status != full && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
+            return i;
+        }
     }
     return -1;
 }
@@ -111,8 +135,8 @@ void * student(void *num){
     //printf("Student %d studying.\n",number);
     while(1){
         if(studyRooms[targetRoom].studentInRoom == ROOM_CAPACITY){
-            //printf("Student %d studying with all group.\n",number);  
-            studyRooms[targetRoom].completed++;          
+            //printf("Student %d studying with all group.\n",number);          
+            sem_post(&studyRooms[targetRoom].closeRoom);
             break;
         }
     }
@@ -142,8 +166,11 @@ void *roomKeeper(void *num){
                 studyRooms[number].status = full;
                 //printf("Room %d is full.\n",number);
             }
+            if(sem_trywait(&studyRooms[number].closeRoom) == 0){
+                studyRooms[number].completed++;
+            }
             if(studyRooms[number].completed == 4){
-                sleep(1);
+                msleep(2000);
                 studyRooms[number].studentInRoom = 0;
                 temp = 0;
                 for(int i = 0;i < ROOM_CAPACITY;i++)
@@ -198,5 +225,4 @@ void *console(void* p){
             updateScreen(0);
         }
     }
-
 }
