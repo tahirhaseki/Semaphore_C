@@ -21,7 +21,18 @@ void *roomKeeper(void *num);
 void *student(void *num);
 void *console(void *);
 
-// Sleep function in miliseconds for better visualization on console.
+// Defining semaphores
+struct studyRoom{
+    sem_t lockRoom;             // studyRoom locks the room when it's full.
+    sem_t studyRoomChairs;      // studyRoomChairs limits the number of students allowed in the room at the same time.
+    sem_t usingBroom;           // usingBroom shows the roomKeeper is cleaning or not.
+    sem_t closeRoom;            // Send keeper to closing info.
+    int status;                 // declares status of room.
+    int studentInRoom;          // keeps number of students in the room;
+    int completed;              // keeps number of students who complete studying with team.
+    int useCount;               // keeps using count of room.
+} typedef studyRoom;
+
 int msleep(long msec){
     struct timespec ts;
     int res;
@@ -47,6 +58,7 @@ struct studyRoom{
     int status;                 // declares status of room.
     int studentInRoom;          // keeps number of students in the room;
     int completed;              // keeps number of students in the room which complete studying.
+    int useCount;
 } typedef studyRoom;
 
 sem_t screen;                   // Refresh console screen.
@@ -55,7 +67,9 @@ studyRoom studyRooms[ROOM_NUMBER];
 
 int studyDone = 0;              // studyDone is flag to emptying a room after studying.
 int allDone = 1;                // allDone is flag to finishing program.
+int maxUsage = 1;
 
+// ADD USAGE 
 int main(int argc, char *argv[]){
     
     pthread_t rk_tid[ROOM_NUMBER];          // RoomKeepers
@@ -73,6 +87,7 @@ int main(int argc, char *argv[]){
         studyRooms[i].status = entryFree;
         studyRooms[i].studentInRoom = 0;
         studyRooms[i].completed = 0;
+        studyRooms[i].useCount = 0;
     }
     
     // Student and Room Keeper Id's Declare
@@ -97,8 +112,8 @@ int main(int argc, char *argv[]){
     // Creating students.
     for (int i = 0; i < STUDENT_NUMBER; i++)
     {
+        msleep(rand() % (1500-350 +1) + 350);
         pthread_create(&std_tid[i],NULL,student,(void *)(std_numbers+i));
-        msleep(50);
     }
 
     // Joining all thread to be ready for ending program.
@@ -116,7 +131,17 @@ int main(int argc, char *argv[]){
 
 // Checks rooms for availability for students.
 int anyFreeStudyRoom(){
-    // First checks idle rooms for minimum working room and returns room's id.
+/*     int changeMaxUsage = 1;
+    for(int i = 0;i < ROOM_NUMBER;i++){
+        if(studyRooms[i].useCount < maxUsage){
+            changeMaxUsage = 0;
+            break;
+        }
+    }
+    if(changeMaxUsage){
+        maxUsage++;
+        changeMaxUsage = 1;
+    } */
     for(int i = 0;i < ROOM_NUMBER;i++){
         if(studyRooms[i].status == idle && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
             return i;
@@ -269,7 +294,7 @@ void *console(void* p){
     while(allDone){
         struct timespec ts;
         if(clock_gettime(CLOCK_REALTIME, &ts) == 0){
-            ts.tv_sec += 2;
+            ts.tv_sec += 3;
         }
         if(sem_timedwait(&screen,&ts) == 0)
             updateScreen(0);
