@@ -27,7 +27,8 @@ struct studyRoom{
     sem_t closeRoom;            // Send keeper to closing info.
     int status;                 // declares status of room.
     int studentInRoom;          // keeps number of students in the room;
-    int completed;
+    int completed;              // keeps number of students who complete studying with team.
+    int useCount;               // keeps using count of room.
 } typedef studyRoom;
 
 int msleep(long msec){
@@ -50,6 +51,7 @@ sem_t screen;
 studyRoom studyRooms[ROOM_NUMBER];
 // studyDone is flag to emptying a room after studying.
 int studyDone = 0;
+int maxUsage = 1;
 
 int main(int argc, char *argv[]){
     // RoomKeepers
@@ -70,6 +72,7 @@ int main(int argc, char *argv[]){
         studyRooms[i].status = entryFree;
         studyRooms[i].studentInRoom = 0;
         studyRooms[i].completed = 0;
+        studyRooms[i].useCount = 0;
     }
     
     int std_numbers[STUDENT_NUMBER];
@@ -90,8 +93,8 @@ int main(int argc, char *argv[]){
     }
     for (int i = 0; i < STUDENT_NUMBER; i++)
     {
+        msleep(rand() % (1500-350 +1) + 350);
         pthread_create(&std_tid[i],NULL,student,(void *)(std_numbers+i));
-        msleep(50);
     }
     for (int i = 0;i < STUDENT_NUMBER ;i++)
     {
@@ -106,6 +109,17 @@ int main(int argc, char *argv[]){
 }
 
 int anyFreeStudyRoom(){
+/*     int changeMaxUsage = 1;
+    for(int i = 0;i < ROOM_NUMBER;i++){
+        if(studyRooms[i].useCount < maxUsage){
+            changeMaxUsage = 0;
+            break;
+        }
+    }
+    if(changeMaxUsage){
+        maxUsage++;
+        changeMaxUsage = 1;
+    } */
     for(int i = 0;i < ROOM_NUMBER;i++){
         if(studyRooms[i].status == idle && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
             return i;
@@ -170,9 +184,10 @@ void *roomKeeper(void *num){
                 studyRooms[number].completed++;
             }
             if(studyRooms[number].completed == 4){
-                msleep(2000);
+                msleep(5000);
                 studyRooms[number].studentInRoom = 0;
                 temp = 0;
+                studyRooms[number].useCount++;
                 for(int i = 0;i < ROOM_CAPACITY;i++)
                     sem_post(&studyRooms[number].studyRoomChairs);
                 //printf("Room %d is entryFree.\n",number);
@@ -217,7 +232,7 @@ void *console(void* p){
     while(1){
         struct timespec ts;
         if(clock_gettime(CLOCK_REALTIME, &ts) == 0){
-            ts.tv_sec += 2;
+            ts.tv_sec += 3;
         }
         if(sem_timedwait(&screen,&ts) == 0)
             updateScreen(0);
