@@ -49,18 +49,6 @@ int msleep(long msec){
     return res;
 }
 
-// Defining semaphores
-struct studyRoom{
-    sem_t lockRoom;             // studyRoom locks the room when it's full.
-    sem_t studyRoomChairs;      // studyRoomChairs limits the number of students allowed in the room at the same time.
-    sem_t usingBroom;           // usingBroom shows the roomKeeper is cleaning or not.
-    sem_t closeRoom;            // Send keeper to closing info.
-    int status;                 // declares status of room.
-    int studentInRoom;          // keeps number of students in the room;
-    int completed;              // keeps number of students in the room which complete studying.
-    int useCount;
-} typedef studyRoom;
-
 sem_t screen;                   // Refresh console screen.
 
 studyRoom studyRooms[ROOM_NUMBER];
@@ -131,25 +119,24 @@ int main(int argc, char *argv[]){
 
 // Checks rooms for availability for students.
 int anyFreeStudyRoom(){
-/*     int changeMaxUsage = 1;
+    int changeMaxUsage = 1;
     for(int i = 0;i < ROOM_NUMBER;i++){
         if(studyRooms[i].useCount < maxUsage){
             changeMaxUsage = 0;
             break;
         }
+        if(i == ROOM_NUMBER - 1 && changeMaxUsage){
+            maxUsage = studyRooms[i].useCount + 1;
+        }
     }
-    if(changeMaxUsage){
-        maxUsage++;
-        changeMaxUsage = 1;
-    } */
     for(int i = 0;i < ROOM_NUMBER;i++){
-        if(studyRooms[i].status == idle && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
+        if(studyRooms[i].useCount < maxUsage && studyRooms[i].status == idle && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
             return i;
         }
     }
     // Checks not full rooms and returns room's id.
     for(int i = 0;i < ROOM_NUMBER;i++){
-        if(studyRooms[i].status != full && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
+        if(studyRooms[i].useCount < maxUsage && studyRooms[i].status != full && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
             return i;
         }
     }
@@ -243,11 +230,12 @@ void *roomKeeper(void *num){
 
             // Checks every student is approved. Then sets room's attributes properly.
             if(studyRooms[number].completed == ROOM_CAPACITY){
-                msleep(2000);
+                msleep(5000);
                 studyRooms[number].studentInRoom = 0;
                 temp = 0;
                 studyRooms[number].completed = 0;
                 studyRooms[number].status = entryFree;
+                studyRooms[number].useCount++;
                 //printf("Room %d is entryFree.\n",number);
                 for(int i = 0;i < ROOM_CAPACITY;i++)
                     sem_post(&studyRooms[number].studyRoomChairs);
