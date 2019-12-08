@@ -20,10 +20,10 @@ enum roomStatus{
 void *roomKeeper(void *num);
 void *student(void *num);
 void *console(void *);
+void updateScreen();
 
 // Defining semaphores
 struct studyRoom{
-    sem_t lockRoom;             // studyRoom locks the room when it's full.
     sem_t studyRoomChairs;      // studyRoomChairs limits the number of students allowed in the room at the same time.
     sem_t usingBroom;           // usingBroom shows the roomKeeper is cleaning or not.
     sem_t closeRoom;            // Send keeper to closing info.
@@ -31,6 +31,7 @@ struct studyRoom{
     int studentInRoom;          // keeps number of students in the room;
     int completed;              // keeps number of students who complete studying with team.
     int useCount;               // keeps using count of room.
+    int studentIDs[4]; 
 } typedef studyRoom;
 
 int msleep(long msec){
@@ -68,7 +69,6 @@ int main(int argc, char *argv[]){
     sem_init(&screen,0,0);
     for (int i = 0; i < ROOM_NUMBER; i++)
     {
-        sem_init(&(studyRooms[i].lockRoom),0,1);
         sem_init(&(studyRooms[i].studyRoomChairs),0,ROOM_CAPACITY);
         sem_init(&(studyRooms[i].usingBroom),0,0);
         sem_init(&(studyRooms[i].closeRoom),0,0);
@@ -76,6 +76,11 @@ int main(int argc, char *argv[]){
         studyRooms[i].studentInRoom = 0;
         studyRooms[i].completed = 0;
         studyRooms[i].useCount = 0;
+        studyRooms[i].studentIDs[0] = 0;
+        studyRooms[i].studentIDs[1] = 0;
+        studyRooms[i].studentIDs[2] = 0;
+        studyRooms[i].studentIDs[3] = 0;
+
     }
     
     // Student and Room Keeper Id's Declare
@@ -100,7 +105,7 @@ int main(int argc, char *argv[]){
     // Creating students.
     for (int i = 0; i < STUDENT_NUMBER; i++)
     {
-        msleep(rand() % (1500-350 +1) + 350);
+        msleep(rand() % (700-150 +1) + 150);
         pthread_create(&std_tid[i],NULL,student,(void *)(std_numbers+i));
     }
 
@@ -109,11 +114,14 @@ int main(int argc, char *argv[]){
     {
         pthread_join(std_tid[i],NULL);
     }
-        for (int i = 0;i < ROOM_NUMBER ;i++)
+    allDone =  0;
+    for (int i = 0;i < ROOM_NUMBER ;i++)
     {
         pthread_join(rk_tid[i],NULL);
     }
-    
+    updateScreen();
+    printf("Everyone has studied.Library is closed.\n");
+
 
 }
 
@@ -129,9 +137,11 @@ int anyFreeStudyRoom(){
             maxUsage = studyRooms[i].useCount + 1;
         }
     }
-    for(int i = 0;i < ROOM_NUMBER;i++){
-        if(studyRooms[i].useCount < maxUsage && studyRooms[i].status == idle && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
-            return i;
+    for(int j = 0;j < 2;j++){
+        for(int i = 0;i < ROOM_NUMBER;i++){
+            if(studyRooms[i].useCount < maxUsage && studyRooms[i].status == idle && sem_trywait(&studyRooms[i].studyRoomChairs)== 0){
+                return i;
+            }
         }
     }
     // Checks not full rooms and returns room's id.
@@ -145,22 +155,27 @@ int anyFreeStudyRoom(){
 
 // Student thread function.
 void * student(void *num){
-    int number = *(int *)num;       // Student ID init.
+    int number = *(int *)num + 1;       // Student ID init.
     int targetRoom = -1;            // Target room init.
     /* 
     ** Student Arrives Library and checks for available study room.
     ** printf("Student %d arrives library.\n",number);
-    */
+    **/
+
     while(1){
         targetRoom = anyFreeStudyRoom();
         if(targetRoom != -1)
+        {
+            studyRooms[targetRoom].studentIDs[studyRooms[targetRoom].studentInRoom] = number;
             break;
+        }
     }
 
     /* 
     ** Student found room.If room is empty then wakes up room keeper.
     ** printf("Student %d found room.\n",number);
-    */
+    **/
+   
     if(studyRooms[targetRoom].studentInRoom++ == 0){
         sem_post(&studyRooms[targetRoom].usingBroom);
     }
@@ -190,6 +205,7 @@ void * student(void *num){
 
 
 void *roomKeeper(void *num){
+    int shutDown = 0;
     while(allDone){
         int number = *(int *)num;       // Room Keeper ID init.
         int temp = 0;                   // Temp value for check differences of students number in room.
@@ -198,8 +214,24 @@ void *roomKeeper(void *num){
         ** In the initialize of thread, room keeper is cleaning room. 
         ** printf("RoomKeeper cleaning room %d.\n",number);
         ** Waits semaphore to unlock.
+        ** printf("Room %d created.\n",number+1);
+        ** printf("RoomKeeper is cleaning room %d\n",number+1);
         */
-        sem_wait(&studyRooms[number].usingBroom);
+
+       while(1){
+           if(sem_trywait(&studyRooms[number].usingBroom) == 0){
+               break;
+           }
+           else if(!allDone){
+               shutDown = 1;
+               break;
+           }
+       }
+        if(shutDown){
+            sem_post(&screen);
+            break;
+        }
+        //sem_wait(&studyRooms[number].usingBroom);
 
         /*
         ** Room keeper starts working.
@@ -219,6 +251,7 @@ void *roomKeeper(void *num){
             }
             // Check numbers of students in room and changes room's status.
             if(studyRooms[number].status != full && studyRooms[number].studentInRoom == ROOM_CAPACITY){
+                studyRooms[number].useCount++;
                 studyRooms[number].status = full;
                 //printf("Room %d is full.\n",number);
             }
@@ -235,7 +268,6 @@ void *roomKeeper(void *num){
                 temp = 0;
                 studyRooms[number].completed = 0;
                 studyRooms[number].status = entryFree;
-                studyRooms[number].useCount++;
                 //printf("Room %d is entryFree.\n",number);
                 for(int i = 0;i < ROOM_CAPACITY;i++)
                     sem_post(&studyRooms[number].studyRoomChairs);
@@ -246,26 +278,26 @@ void *roomKeeper(void *num){
         }
     }
 }
-void updateScreen(int temp_seat){
+void updateScreen(){
     system("clear");
     for(int i = 0;i < ROOM_NUMBER;i++){
         int inRoom = studyRooms[i].studentInRoom;
         int status = studyRooms[i].status;
         printf("Room %d = ",i+1);
         for(int j = 0;j < inRoom;j++){
-            printf("X ");
+            printf("%d ",studyRooms[i].studentIDs[j]);
         }
         for(int j = 0;j < ROOM_CAPACITY-inRoom;j++){
             printf("O ");
         }
         if(status == entryFree){
-            printf("Status = EntryFree - Cleaning\n");
+            printf("Status = EntryFree - Cleaning - useCount: %d\n",studyRooms[i].useCount );
         }
         else if(status == idle){
-            printf("Status = Idle - Not Cleaning\n");
+            printf("Status = Idle - Not Cleaning - useCount: %d\n",studyRooms[i].useCount);
         }
         else{
-            printf("Status = Full - Not Cleaning\n");
+            printf("Status = Full - Not Cleaning - useCount: %d\n",studyRooms[i].useCount);
         }
     }
 }
@@ -275,7 +307,7 @@ void *console(void* p){
     int temp_seats[ROOM_NUMBER];
     for(int i = 0; i< ROOM_NUMBER;i++){
         temp_seats[i] = 0;
-        printf("Room %d = O O O O Status = EntryFree - Cleaning\n",i+1);
+        printf("Room %d = O O O O Status = EntryFree - Cleaning - useCount: %d\n",i+1,studyRooms[i].useCount);
     }
     // Updates screen for every semaphore post. 
     // And it is updating for every 2 seconds no matter what.
@@ -285,9 +317,9 @@ void *console(void* p){
             ts.tv_sec += 3;
         }
         if(sem_timedwait(&screen,&ts) == 0)
-            updateScreen(0);
+            updateScreen();
         else{
-            updateScreen(0);
+            updateScreen();
         }
     }
 }
