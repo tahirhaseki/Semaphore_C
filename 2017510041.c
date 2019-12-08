@@ -20,7 +20,6 @@ enum roomStatus{
 void *roomKeeper(void *num);
 void *student(void *num);
 void *console(void *);
-void updateScreen();
 
 // Defining semaphores
 struct studyRoom{
@@ -34,6 +33,9 @@ struct studyRoom{
     int studentIDs[4]; 
 } typedef studyRoom;
 
+sem_t screen;                   // Refresh console screen.
+
+// Sleep thread in milisecond. Source: https://stackoverflow.com/a/1157217
 int msleep(long msec){
     struct timespec ts;
     int res;
@@ -49,16 +51,14 @@ int msleep(long msec){
     } while (res);
     return res;
 }
-
-sem_t screen;                   // Refresh console screen.
+void updateScreen();
 
 studyRoom studyRooms[ROOM_NUMBER];
 
 int studyDone = 0;              // studyDone is flag to emptying a room after studying.
 int allDone = 1;                // allDone is flag to finishing program.
-int maxUsage = 1;
+int maxUsage = 1;               // Keep usage of rooms under control for equal using.
 
-// ADD USAGE 
 int main(int argc, char *argv[]){
     
     pthread_t rk_tid[ROOM_NUMBER];          // RoomKeepers
@@ -231,7 +231,6 @@ void *roomKeeper(void *num){
             sem_post(&screen);
             break;
         }
-        //sem_wait(&studyRooms[number].usingBroom);
 
         /*
         ** Room keeper starts working.
@@ -239,7 +238,7 @@ void *roomKeeper(void *num){
         ** Then changes room status.
         ** printf("Room %d is Idle.\n",number);
         */
-        //
+
         studyRooms[number].status = idle;
 
         while(1){
